@@ -22,10 +22,14 @@ const { generateGeminiResponse } = require('./geminiApi');
 const { generateGroqResponse } = require('./groqapi');
 const { generateClaudeResponse } = require('./claude');
 const { generateAzureOpenAIResponse } = require('./azureOpenAI');
-const { getConversationHistory, addToConversationHistory, clearConversationHistory, getSummarizedConversationHistory } = require('./redis');
+const { getConversationHistory, addToConversationHistory, clearConversationHistory, businessMessage, getBusinessConnection, getSummarizedConversationHistory } = require('./redis');
 const { generateImage, VALID_SIZES } = require('./generateImage');
 const { handleImageUpload } = require('./uploadHandler');
 const { getUserLanguage, setUserLanguage, translate, supportedLanguages, getLocalizedCommands } = require('./localization');
+
+
+
+
 
 let currentModel = OPENAI_API_KEY ? DEFAULT_MODEL : null;
 
@@ -39,6 +43,23 @@ const redis = new Redis({
   url: UPSTASH_REDIS_REST_URL,
   token: UPSTASH_REDIS_REST_TOKEN,
 });
+
+let businessConnections = {};
+
+bot.on('business_message', async (ctx) => {
+  try {
+    const bizcon = await ctx.getBusinessConnection();
+    const businessConnectionId = ctx.businessMessage.business_connection_id;
+    
+    if (businessConnectionId) {
+      businessConnections[ctx.businessMessage.chat.id] = businessConnectionId;
+      console.log('Stored Business Connection ID:', businessConnectionId);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+});
+
 
 function getMessageFromUpdate(update) {
   if (update.callback_query) {
@@ -73,16 +94,33 @@ async function updateBotCommands(userId) {
   }
 }
 
+
+
+let businessConnections = {};  // Store business connection IDs
+
 async function handleStart(msg) {
+  const senderbusinessbot = msg.sender_business_bot = true;
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
+  const businessConnectionId = msg.business_connection_id;
+
+  if (businessConnectionId) {
+    businessConnections[chatId] = businessConnectionId;  // Save the business connection ID
+    console.log('Stored Business Connection ID:', businessConnectionId);
+  }
+
   try {
-    await bot.sendMessage(chatId, translate('welcome', userLang, {model: currentModel}), {parse_mode: 'Markdown'});
+    await bot.sendMessage(chatId, translate('welcome', userLang, {model: currentModel}), { 
+      parse_mode: 'Markdown',
+      sender_business_bot: senderbusinessbot,
+      business_connection_id: businessConnectionId || ''  // Include the business connection ID if available
+    });
     console.log('Start message sent successfully');
   } catch (error) {
     console.error('Error sending start message:', error);
   }
+}
 }
 
 async function handleNew(msg) {
