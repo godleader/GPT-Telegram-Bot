@@ -70,25 +70,64 @@ function getMessageFromUpdate(update) {
   return update.message || update.edited_message;
 }
 
-// Modify sendMessageWithFallback to include business_connection_id
-async function sendMessageWithFallback(chatId, text, parseMode = 'Markdown', options = {}) {
+// Modify sendMessageWithFallback to include business_connection_id as a parameter
+async function sendMessageWithFallback(businessConnectionId, chatId, text, parseMode = 'Markdown', options = {}) {
   try {
-    // Retrieve the business_connection_id from Redis if available
-    const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+    const params = {
+      chat_id: chatId,
+      text: text,
+      parse_mode: parseMode,
+      ...options
+    };
+
     if (businessConnectionId) {
-      options.business_connection_id = businessConnectionId;
+      params.business_connection_id = businessConnectionId;
     }
-    await bot.sendMessage(chatId, text, { parse_mode: parseMode, ...options });
+
+    // Use bot.callApi to send the message with the correct parameter order
+    await bot.callApi('sendMessage', params);
   } catch (error) {
     console.error('Error sending message with Markdown:', error);
     try {
       // Remove Markdown syntax
       const plainText = text.replace(/[*_`\[\]()~>#+=|{}.!-]/g, '');
-      await bot.sendMessage(chatId, plainText, options);
+
+      const params = {
+        chat_id: chatId,
+        text: plainText,
+        ...options
+      };
+
+      if (businessConnectionId) {
+        params.business_connection_id = businessConnectionId;
+      }
+
+      await bot.callApi('sendMessage', params);
     } catch (secondError) {
       console.error('Error sending plain text message:', secondError);
       throw new Error('Failed to send message in any format');
     }
+  }
+}
+
+// Update sendPhotoWithFallback to include business_connection_id as a parameter
+async function sendPhotoWithFallback(businessConnectionId, chatId, photo, options = {}) {
+  try {
+    const params = {
+      chat_id: chatId,
+      photo: photo,
+      ...options
+    };
+
+    if (businessConnectionId) {
+      params.business_connection_id = businessConnectionId;
+    }
+
+    // Use bot.callApi to send the photo with the correct parameter order
+    await bot.callApi('sendPhoto', params);
+  } catch (error) {
+    console.error('Error sending photo:', error);
+    throw error;
   }
 }
 
@@ -115,6 +154,9 @@ async function handleBusinessMessage(msg) {
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
 
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   // Process the business message
   try {
     console.log('Received business message:', msg);
@@ -124,12 +166,12 @@ async function handleBusinessMessage(msg) {
     const response = await generateResponse(msg.text, conversationHistory, currentModel);
 
     // Send the response as a business message
-    await sendMessageWithFallback(chatId, response, 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, response, 'Markdown');
 
     await addToConversationHistory(userId, msg.text, response);
   } catch (error) {
     console.error('Error handling business message:', error);
-    await sendMessageWithFallback(chatId, translate('error_message', userLang), 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('error_message', userLang), 'Markdown');
   }
 }
 
@@ -162,9 +204,12 @@ async function handleMessage(update) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
 
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   try {
     if (!WHITELISTED_USERS.includes(userId)) {
-      await sendMessageWithFallback(chatId, 'Sorry, you are not authorized to use this bot.', 'Markdown');
+      await sendMessageWithFallback(businessConnectionId, chatId, 'Sorry, you are not authorized to use this bot.', 'Markdown');
       return;
     }
 
@@ -192,23 +237,29 @@ async function handleMessage(update) {
       }
     } else {
       console.log('Received unsupported message type');
-      await sendMessageWithFallback(chatId, translate('unsupported_message', userLang), 'Markdown');
+      await sendMessageWithFallback(businessConnectionId, chatId, translate('unsupported_message', userLang), 'Markdown');
     }
   } catch (error) {
     console.error('Error in handleMessage:', error);
-    await sendMessageWithFallback(chatId, translate('error_message', userLang), 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('error_message', userLang), 'Markdown');
   }
 }
 
-// Update the sendPhoto function to include business_connection_id
-async function sendPhotoWithFallback(chatId, photo, options = {}) {
+// Update sendPhotoWithFallback to include business_connection_id
+async function sendPhotoWithFallback(businessConnectionId, chatId, photo, options = {}) {
   try {
-    // Retrieve the business_connection_id from Redis if available
-    const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+    const params = {
+      chat_id: chatId,
+      photo: photo,
+      ...options
+    };
+
     if (businessConnectionId) {
-      options.business_connection_id = businessConnectionId;
+      params.business_connection_id = businessConnectionId;
     }
-    await bot.sendPhoto(chatId, photo, options);
+
+    // Use bot.callApi to send the photo with the correct parameter order
+    await bot.callApi('sendPhoto', params);
   } catch (error) {
     console.error('Error sending photo:', error);
     throw error;
@@ -221,8 +272,12 @@ async function handleStart(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
+
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   try {
-    await sendMessageWithFallback(chatId, translate('welcome', userLang, { model: currentModel }), 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('welcome', userLang, { model: currentModel }), 'Markdown');
     console.log('Start message sent successfully');
   } catch (error) {
     console.error('Error sending start message:', error);
@@ -233,9 +288,13 @@ async function handleNew(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
+
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   try {
     await clearConversationHistory(userId);
-    await sendMessageWithFallback(chatId, translate('new_conversation', userLang, { model: currentModel }), 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('new_conversation', userLang, { model: currentModel }), 'Markdown');
     console.log('New conversation message sent successfully');
   } catch (error) {
     console.error('Error handling new conversation:', error);
@@ -246,16 +305,20 @@ async function handleHistory(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
+
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   try {
     const summarizedHistory = await getSummarizedConversationHistory(userId, currentModel);
     if (!summarizedHistory) {
-      await sendMessageWithFallback(chatId, translate('no_history', userLang), 'Markdown');
+      await sendMessageWithFallback(businessConnectionId, chatId, translate('no_history', userLang), 'Markdown');
       return;
     }
-    await sendMessageWithFallback(chatId, translate('history_intro', userLang) + summarizedHistory, 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('history_intro', userLang) + summarizedHistory, 'Markdown');
   } catch (error) {
     console.error('Error retrieving summarized conversation history:', error);
-    await sendMessageWithFallback(chatId, translate('error_message', userLang), 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('error_message', userLang), 'Markdown');
   }
 }
 
@@ -263,6 +326,10 @@ async function handleHelp(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
+
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   try {
     const availableModels = [
       ...(OPENAI_API_KEY ? OPENAI_MODELS : []),
@@ -275,7 +342,7 @@ async function handleHelp(msg) {
       models: availableModels.join(', '),
       current_model: currentModel
     });
-    await sendMessageWithFallback(chatId, helpMessage, 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, helpMessage, 'Markdown');
     console.log('Help message sent successfully');
   } catch (error) {
     console.error('Error sending help message:', error);
@@ -287,8 +354,11 @@ async function handleImageGeneration(msg) {
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
 
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   if (!OPENAI_API_KEY) {
-    await sendMessageWithFallback(chatId, translate('no_api_key', userLang));
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('no_api_key', userLang));
     return;
   }
 
@@ -307,7 +377,7 @@ async function handleImageGeneration(msg) {
       args.pop(); // Remove size from the argument list
     } else {
       // If size is invalid, send error message and return
-      await sendMessageWithFallback(chatId, translate('invalid_size', userLang, { size: possibleSize, valid_sizes: VALID_SIZES.join(', ') }));
+      await sendMessageWithFallback(businessConnectionId, chatId, translate('invalid_size', userLang, { size: possibleSize, valid_sizes: VALID_SIZES.join(', ') }));
       return;
     }
   }
@@ -316,7 +386,7 @@ async function handleImageGeneration(msg) {
 
   if (prompt.trim() === '') {
     // If no description is provided, suggest using /help command
-    await sendMessageWithFallback(chatId, translate('no_image_description', userLang) + ' ' + translate('use_help_command', userLang));
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('no_image_description', userLang) + ' ' + translate('use_help_command', userLang));
     return;
   }
 
@@ -330,7 +400,7 @@ async function handleImageGeneration(msg) {
 
     if (existingImageUrl) {
       console.log(`Using existing image URL: ${existingImageUrl}`);
-      await sendPhotoWithFallback(chatId, existingImageUrl, { caption: prompt });
+      await sendPhotoWithFallback(businessConnectionId, chatId, existingImageUrl, { caption: prompt });
       return;
     }
 
@@ -342,7 +412,7 @@ async function handleImageGeneration(msg) {
       await redis.set(requestId, imageUrl, { ex: 86400 }); // Expires after 1 day
 
       console.log(`Sending image. URL: ${imageUrl}`);
-      await sendPhotoWithFallback(chatId, imageUrl, { caption: prompt });
+      await sendPhotoWithFallback(businessConnectionId, chatId, imageUrl, { caption: prompt });
       console.log('Photo sent successfully');
     } else {
       throw new Error('Failed to get image URL');
@@ -359,7 +429,7 @@ async function handleImageGeneration(msg) {
     } else {
       errorMessage += ` ${error.message}`;
     }
-    await sendMessageWithFallback(chatId, errorMessage);
+    await sendMessageWithFallback(businessConnectionId, chatId, errorMessage);
   }
 }
 
@@ -368,12 +438,15 @@ async function handleLanguageChange(msg) {
   const userId = msg.from.id;
   const currentLang = await getUserLanguage(userId);
 
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   const keyboard = supportedLanguages.map(lang => [{ text: translate(lang, currentLang), callback_data: `lang_${lang}` }]);
 
-  await sendMessageWithFallback(chatId, translate('choose_language', currentLang), 'Markdown', {
-    reply_markup: JSON.stringify({
+  await sendMessageWithFallback(businessConnectionId, chatId, translate('choose_language', currentLang), 'Markdown', {
+    reply_markup: {
       inline_keyboard: keyboard
-    })
+    }
   });
 }
 
@@ -381,6 +454,9 @@ async function handleStreamMessage(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
+
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
 
   await bot.sendChatAction(chatId, 'typing');
   const conversationHistory = await getConversationHistory(userId);
@@ -391,7 +467,7 @@ async function handleStreamMessage(msg) {
     let remainingText = text;
     while (remainingText.length > 0) {
       const chunk = remainingText.slice(0, MESSAGE_LENGTH_THRESHOLD);
-      await sendMessageWithFallback(chatId, chunk);
+      await sendMessageWithFallback(businessConnectionId, chatId, chunk);
       remainingText = remainingText.slice(MESSAGE_LENGTH_THRESHOLD);
     }
   }
@@ -403,7 +479,7 @@ async function handleStreamMessage(msg) {
       await addToConversationHistory(userId, msg.text, response);
     } catch (error) {
       console.error('Error in Groq processing:', error);
-      await sendMessageWithFallback(chatId, translate('error_message', userLang));
+      await sendMessageWithFallback(businessConnectionId, chatId, translate('error_message', userLang));
     }
     return;
   }
@@ -415,7 +491,7 @@ async function handleStreamMessage(msg) {
       await addToConversationHistory(userId, msg.text, response);
     } catch (error) {
       console.error('Error in Gemini processing:', error);
-      await sendMessageWithFallback(chatId, translate('error_message', userLang));
+      await sendMessageWithFallback(businessConnectionId, chatId, translate('error_message', userLang));
     }
     return;
   }
@@ -428,7 +504,7 @@ async function handleStreamMessage(msg) {
   } else if (AZURE_OPENAI_API_KEY && AZURE_OPENAI_MODELS.includes(currentModel)) {
     stream = generateAzureOpenAIResponse(msg.text, conversationHistory, currentModel);
   } else {
-    await sendMessageWithFallback(chatId, translate('no_api_key', userLang));
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('no_api_key', userLang));
     return;
   }
 
@@ -444,10 +520,10 @@ async function handleStreamMessage(msg) {
       if (fullResponse.length > MESSAGE_LENGTH_THRESHOLD) {
         if (messageSent) {
           // Send new message and reset
-          await sendMessageWithFallback(chatId, fullResponse);
+          await sendMessageWithFallback(businessConnectionId, chatId, fullResponse);
         } else {
           // First time sending message
-          const sentMsg = await sendMessageWithFallback(chatId, fullResponse);
+          const sentMsg = await sendMessageWithFallback(businessConnectionId, chatId, fullResponse);
           messageId = sentMsg.message_id;
           messageSent = true;
         }
@@ -455,18 +531,25 @@ async function handleStreamMessage(msg) {
         lastUpdateLength = 0;
       } else if (fullResponse.length > 0 && !messageSent) {
         // First time sending message (shorter than threshold)
-        const sentMsg = await sendMessageWithFallback(chatId, fullResponse);
+        const sentMsg = await sendMessageWithFallback(businessConnectionId, chatId, fullResponse);
         messageId = sentMsg.message_id;
         messageSent = true;
         lastUpdateLength = fullResponse.length;
       } else if (messageSent && fullResponse.length % Math.max(20, Math.floor((fullResponse.length - lastUpdateLength) / 10)) === 0) {
         // Update existing message
         try {
-          await bot.editMessageText(fullResponse, {
+          const params = {
             chat_id: chatId,
             message_id: messageId,
+            text: fullResponse,
             parse_mode: 'Markdown'
-          });
+          };
+
+          if (businessConnectionId) {
+            params.business_connection_id = businessConnectionId;
+          }
+
+          await bot.callApi('editMessageText', params);
           lastUpdateLength = fullResponse.length;
         } catch (error) {
           if (!error.response || error.response.description !== 'Bad Request: message is not modified') {
@@ -479,20 +562,27 @@ async function handleStreamMessage(msg) {
     // Send any remaining content
     if (fullResponse.length > 0) {
       if (messageSent) {
-        await sendMessageWithFallback(chatId, fullResponse);
+        await sendMessageWithFallback(businessConnectionId, chatId, fullResponse);
       } else {
-        await bot.editMessageText(fullResponse, {
+        const params = {
           chat_id: chatId,
           message_id: messageId,
+          text: fullResponse,
           parse_mode: 'Markdown'
-        });
+        };
+
+        if (businessConnectionId) {
+          params.business_connection_id = businessConnectionId;
+        }
+
+        await bot.callApi('editMessageText', params);
       }
     }
 
     await addToConversationHistory(userId, msg.text, fullResponse);
   } catch (error) {
     console.error('Error in stream processing:', error);
-    await sendMessageWithFallback(chatId, translate('error_message', userLang), 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('error_message', userLang), 'Markdown');
   }
 }
 
@@ -501,36 +591,39 @@ async function handleImageAnalysis(msg) {
   const userId = msg.from.id;
   const userLang = await getUserLanguage(userId);
 
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${chatId}`);
+
   if (!OPENAI_API_KEY) {
-    await sendMessageWithFallback(chatId, translate('no_api_key', userLang));
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('no_api_key', userLang));
     return;
   }
 
   // Check if a photo is attached
   const photo = msg.photo && msg.photo[msg.photo.length - 1];
   if (!photo) {
-    await sendMessageWithFallback(chatId, translate('no_image', userLang));
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('no_image', userLang));
     return;
   }
 
   // Get the prompt from the caption or wait for it
   let prompt = msg.caption;
   if (!prompt) {
-    await sendMessageWithFallback(chatId, translate('provide_image_description', userLang));
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('provide_image_description', userLang));
     // Wait for the next message to be the prompt
     const promptMsg = await new Promise(resolve => bot.once('message', resolve));
     prompt = promptMsg.text;
   }
 
-  await sendMessageWithFallback(chatId, translate('processing_image', userLang));
+  await sendMessageWithFallback(businessConnectionId, chatId, translate('processing_image', userLang));
 
   try {
     const fileInfo = await bot.getFile(photo.file_id);
     const result = await handleImageUpload(fileInfo, prompt, currentModel);
-    await sendMessageWithFallback(chatId, result, 'Markdown');
+    await sendMessageWithFallback(businessConnectionId, chatId, result, 'Markdown');
   } catch (error) {
     console.error('Error in image analysis:', error);
-    await sendMessageWithFallback(chatId, translate('error_message', userLang));
+    await sendMessageWithFallback(businessConnectionId, chatId, translate('error_message', userLang));
   }
 }
 
@@ -539,13 +632,16 @@ async function handleCallbackQuery(callbackQuery) {
   const msg = callbackQuery.message;
   const userId = callbackQuery.from.id;
 
+  // Retrieve the business_connection_id
+  const businessConnectionId = await redis.get(`business_connection_id:${msg.chat.id}`);
+
   if (action.startsWith('lang_')) {
     const newLang = action.split('_')[1];
     if (await setUserLanguage(userId, newLang)) {
       const userLang = await getUserLanguage(userId);
       await updateBotCommands(userId);
       await bot.answerCallbackQuery(callbackQuery.id, { text: translate('language_set', userLang) });
-      await sendMessageWithFallback(msg.chat.id, translate('language_changed', userLang));
+      await sendMessageWithFallback(businessConnectionId, msg.chat.id, translate('language_changed', userLang));
     }
   }
 }
