@@ -1,97 +1,98 @@
-const { Redis } = require('@upstash/redis');
-const { UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, TELEGRAM_BOT_TOKEN } = require('./config');
-const TelegramBot = require('node-telegram-bot-api');
+'use strict';
 
-const redis = new Redis({
-  url: UPSTASH_REDIS_REST_URL,
-  token: UPSTASH_REDIS_REST_TOKEN,
-});
+function Business(newBusiness = {}) {
 
-const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+  var business = {
+    /**
+     * The associated Business ID
+     *
+     * @type {Number}
+     */
+    businessId: undefined,
 
-/**
- * Get the business connection ID for a specific chat.
- * @param {number} chatId - The chat ID for which to get the business connection ID.
- * @returns {Promise<string|null>} - The business connection ID, or null if not available.
- */
-async function getBusinessConnectionId(chatId) {
-  try {
-    // Attempt to retrieve the business connection ID from Redis cache.
-    const connectionId = await redis.get(`business_connection:${chatId}`);
-    if (connectionId) {
-      return connectionId;
-    }
+    /**
+     * The associated Business Identifier
+     *
+     * @type {String}
+     */
+    businessIdentifier: undefined,
 
-    // If no connection ID found, perform necessary logic to fetch it, e.g., from an external API.
-    // For the sake of this implementation, we will simulate this with a placeholder.
-    const fetchedConnectionId = await fetchBusinessConnectionIdFromAPI(chatId);
-    
-    if (fetchedConnectionId) {
-      // Cache the connection ID in Redis for faster future access.
-      await redis.set(`business_connection:${chatId}`, fetchedConnectionId, { ex: 3600 }); // Cache for 1 hour
-      return fetchedConnectionId;
-    }
+    /**
+     * The associated Business Name
+     *
+     * @type {String}
+     */
+    businessName: undefined,
 
-    return null;
-  } catch (error) {
-    console.error('Error fetching business connection ID:', error);
-    return null;
+    /**
+     * The associated Business Connection Id
+     *
+     * @type {Number}
+     */
+    businessConnectionId: undefined,
+
+    /**
+     * Check if this business is the primary Business of the Client
+     *
+     * @type {Boolean}
+     */
+    isPrimary: undefined,
+
+    /**
+     * Creation Time of the Business, can't be set via Webservice (read-only)
+     *
+     * @type {Date}
+     */
+    creationTimeStamp: undefined,
+
+  };
+
+  Object.assign(business, newBusiness);
+
+  this.getBusinessId = function () {
+    return business.businessId;
+  };
+
+  this.setBusinessId = function (businessId) {
+    return business.businessId;
+  };
+
+  this.getBusinessIdentifier = function() {
+      return this.businessIdentifier;
+  };
+
+  this.setBusinessIdentifier = function(businessIdentifier) {
+      this.businessIdentifier = businessIdentifier;
+  };
+
+  this.getBusinessConnectionId = function () {
+    return business.businessConnectionId;
+  };
+
+  this.setBusinessConnectionId = function (businessConnectionId) {
+    business.businessConnectionId = businessConnectionId;
+  };
+
+  this.isPrimary = function () {
+    return business.isPrimary;
+  };
+
+  this.setIsPrimary = function (isPrimary) {
+    business.isPrimary = isPrimary;
+  };
+
+  this.getCreationTimestamp = function () {
+    return business.creationTimeStamp;
+  };
+
+  this.setCreationTimestamp = function (creationTimeStamp) {
+    business.creationTimeStamp = creationTimeStamp;
   }
+
+  this.toObject = function () {
+    return Object.assign(this, business);
+  };
+
 }
 
-/**
- * Simulates fetching the business connection ID from an external API or data source.
- * @param {number} chatId - The chat ID for which to fetch the business connection ID.
- * @returns {Promise<string|null>} - A simulated business connection ID, or null if not available.
- */
-async function fetchBusinessConnectionIdFromAPI(chatId) {
-  // This is a placeholder implementation.
-  // Replace with actual logic to interact with your API or database to get the business connection ID.
-  console.log(`Fetching business connection ID for chat ID: ${chatId} from external API...`);
-  // Simulate a successful fetch with a random connection ID.
-  return `connection-${chatId}`;
-}
-
-/**
- * Send a business message if a business connection exists, otherwise send a regular message.
- * @param {number} chatId - The chat ID to which the message should be sent.
- * @param {string} text - The text of the message to be sent.
- */
-async function sendBusinessMessage(chatId, text) {
-  try {
-    const connectionId = await getBusinessConnectionId(chatId);
-    if (connectionId) {
-      // Send message through business connection
-      await bot.invokeWithBusinessConnection(connectionId, 'messages.sendMessage', {
-        peer: chatId,
-        message: text,
-        parse_mode: 'Markdown'
-      });
-      console.log(`Business message sent to chat ID: ${chatId}`);
-    } else {
-      // Send regular message if no business connection
-      await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
-      console.log(`Regular message sent to chat ID: ${chatId}`);
-    }
-  } catch (error) {
-    console.error('Error sending message:', error);
-  }
-}
-
-// Listen for messages and respond using the business chatbots feature
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  const userMessage = msg.text;
-
-  // Example response logic
-  if (userMessage.toLowerCase() === '/start') {
-    await sendBusinessMessage(chatId, 'Welcome to our business chatbot! How can I assist you today?');
-  } else {
-    await sendBusinessMessage(chatId, `You said: ${userMessage}`);
-  }
-});
-
-module.exports = {
-  getBusinessConnectionId,
-  sendBusinessMessage,
-};
+module.exports = Business;
