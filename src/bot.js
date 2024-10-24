@@ -1,3 +1,4 @@
+// Required modules and configurations
 const TelegramBot = require('node-telegram-bot-api');
 const { Redis } = require('@upstash/redis');
 const {
@@ -70,19 +71,16 @@ function getMessageFromUpdate(update) {
   return update.message || update.edited_message;
 }
 
-// Modify sendMessageWithFallback to include business_connection_id as a parameter
+// Modify sendMessageWithFallback to include business_connection_id unconditionally
 async function sendMessageWithFallback(businessConnectionId, chatId, text, parseMode = 'Markdown', options = {}) {
   try {
     const params = {
+      business_connection_id: businessConnectionId,
       chat_id: chatId,
       text: text,
       parse_mode: parseMode,
       ...options
     };
-
-    if (businessConnectionId) {
-      params.business_connection_id = businessConnectionId;
-    }
 
     // Use bot.callApi to send the message with the correct parameter order
     await bot.callApi('sendMessage', params);
@@ -93,14 +91,11 @@ async function sendMessageWithFallback(businessConnectionId, chatId, text, parse
       const plainText = text.replace(/[*_`\[\]()~>#+=|{}.!-]/g, '');
 
       const params = {
+        business_connection_id: businessConnectionId,
         chat_id: chatId,
         text: plainText,
         ...options
       };
-
-      if (businessConnectionId) {
-        params.business_connection_id = businessConnectionId;
-      }
 
       await bot.callApi('sendMessage', params);
     } catch (secondError) {
@@ -110,18 +105,15 @@ async function sendMessageWithFallback(businessConnectionId, chatId, text, parse
   }
 }
 
-// Update sendPhotoWithFallback to include business_connection_id as a parameter
+// Update sendPhotoWithFallback to include business_connection_id unconditionally
 async function sendPhotoWithFallback(businessConnectionId, chatId, photo, options = {}) {
   try {
     const params = {
+      business_connection_id: businessConnectionId,
       chat_id: chatId,
       photo: photo,
       ...options
     };
-
-    if (businessConnectionId) {
-      params.business_connection_id = businessConnectionId;
-    }
 
     // Use bot.callApi to send the photo with the correct parameter order
     await bot.callApi('sendPhoto', params);
@@ -245,18 +237,15 @@ async function handleMessage(update) {
   }
 }
 
-// Update sendPhotoWithFallback to include business_connection_id
+// Update sendPhotoWithFallback to include business_connection_id unconditionally
 async function sendPhotoWithFallback(businessConnectionId, chatId, photo, options = {}) {
   try {
     const params = {
+      business_connection_id: businessConnectionId,
       chat_id: chatId,
       photo: photo,
       ...options
     };
-
-    if (businessConnectionId) {
-      params.business_connection_id = businessConnectionId;
-    }
 
     // Use bot.callApi to send the photo with the correct parameter order
     await bot.callApi('sendPhoto', params);
@@ -539,15 +528,12 @@ async function handleStreamMessage(msg) {
         // Update existing message
         try {
           const params = {
+            business_connection_id: businessConnectionId,
             chat_id: chatId,
             message_id: messageId,
             text: fullResponse,
             parse_mode: 'Markdown'
           };
-
-          if (businessConnectionId) {
-            params.business_connection_id = businessConnectionId;
-          }
 
           await bot.callApi('editMessageText', params);
           lastUpdateLength = fullResponse.length;
@@ -565,15 +551,12 @@ async function handleStreamMessage(msg) {
         await sendMessageWithFallback(businessConnectionId, chatId, fullResponse);
       } else {
         const params = {
+          business_connection_id: businessConnectionId,
           chat_id: chatId,
           message_id: messageId,
           text: fullResponse,
           parse_mode: 'Markdown'
         };
-
-        if (businessConnectionId) {
-          params.business_connection_id = businessConnectionId;
-        }
 
         await bot.callApi('editMessageText', params);
       }
@@ -656,6 +639,7 @@ async function updateBotCommands(userId) {
   }
 }
 
+// Export the necessary functions and the bot instance
 module.exports = {
   bot,
   handleMessage,
